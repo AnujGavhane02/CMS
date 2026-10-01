@@ -62,10 +62,15 @@ export const register = async (req, res) => {
 
     await user.save();
 
-    // Send OTP — fire-and-forget; don't block registration on email failure
-    sendOtpEmail(user, otp, 'email_verify').catch((err) =>
-      logger.error('Failed to send verification OTP email:', err)
-    );
+    try {
+      await sendOtpEmail(user, otp, 'email_verify');
+    } catch (emailError) {
+      logger.error('Failed to send verification OTP email:', emailError);
+      return res.status(503).json({
+        success: false,
+        message: 'Account created, but the verification email could not be sent. Please sign in and request a new OTP after email service is configured.'
+      });
+    }
 
     logger.info(`New user registered: ${email}`, { userId: user._id, role });
 
@@ -102,9 +107,7 @@ export const sendEmailVerificationOtp = async (req, res) => {
     user.emailVerifyOtpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    sendOtpEmail(user, otp, 'email_verify').catch((err) =>
-      logger.error('Failed to resend verification OTP:', err)
-    );
+    await sendOtpEmail(user, otp, 'email_verify');
 
     res.json({ success: true, message: 'OTP sent to your email.' });
   } catch (error) {
